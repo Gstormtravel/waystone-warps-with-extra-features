@@ -4,10 +4,15 @@ import co.aikar.idb.Database
 import dev.mizarc.waystonewarps.domain.whitelist.Whitelist
 import dev.mizarc.waystonewarps.domain.whitelist.WhitelistRepository
 import dev.mizarc.waystonewarps.infrastructure.persistence.storage.Storage
+import java.sql.SQLException
 import java.time.Instant
 import java.util.UUID
+import java.util.logging.Logger
 
-class WhitelistRepositorySQLite(private val storage: Storage<Database>): WhitelistRepository {
+class WhitelistRepositorySQLite(
+    private val storage: Storage<Database>,
+    private val logger: Logger = Logger.getLogger("WaystoneWarps")
+): WhitelistRepository {
     private val whitelistMap = HashMap<UUID, MutableSet<UUID>>()
 
     init {
@@ -17,7 +22,6 @@ class WhitelistRepositorySQLite(private val storage: Storage<Database>): Whiteli
     override fun isWhitelisted(warpId: UUID, playerId: UUID): Boolean {
         return whitelistMap[warpId]?.contains(playerId) == true
     }
-
 
     override fun getByWarp(warpId: UUID): List<UUID> {
         return whitelistMap[warpId]?.toList() ?: emptyList()
@@ -31,23 +35,41 @@ class WhitelistRepositorySQLite(private val storage: Storage<Database>): Whiteli
     }
 
     override fun add(whitelist: Whitelist) {
-        whitelistMap.computeIfAbsent(whitelist.warpId) { HashSet() }.add(whitelist.playerId)
-        storage.connection.executeInsert("INSERT INTO whitelist (warpId, playerId, creationTime) " +
-                "VALUES (?, ?, ?);",
-            whitelist.warpId, whitelist.playerId, Instant.now())
+        try {
+            storage.connection.executeInsert("INSERT INTO whitelist (warpId, playerId, creationTime) " +
+                    "VALUES (?, ?, ?);",
+                whitelist.warpId, whitelist.playerId, Instant.now())
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            whitelistMap.computeIfAbsent(whitelist.warpId) { HashSet() }.add(whitelist.playerId)
+        } catch (error: SQLException) {
+            logger.severe("Failed to add whitelist entry for warp ${whitelist.warpId} and player ${whitelist.playerId}: ${error.message}")
+            error.printStackTrace()
+        }
     }
 
     override fun remove(warpId: UUID, playerId: UUID) {
-        whitelistMap[warpId]?.remove(playerId)
-        if (whitelistMap[warpId]?.isEmpty() == true) {
-            whitelistMap.remove(warpId)
+        try {
+            storage.connection.executeUpdate("DELETE FROM whitelist WHERE warpId=? AND playerId=?", warpId, playerId)
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            whitelistMap[warpId]?.remove(playerId)
+            if (whitelistMap[warpId]?.isEmpty() == true) {
+                whitelistMap.remove(warpId)
+            }
+        } catch (error: SQLException) {
+            logger.severe("Failed to remove whitelist entry for warp $warpId and player $playerId: ${error.message}")
+            error.printStackTrace()
         }
-        storage.connection.executeUpdate("DELETE FROM whitelist WHERE warpId=? AND playerId=?", warpId, playerId)
     }
 
     override fun removeByWarp(warpId: UUID) {
-        whitelistMap.remove(warpId)
-        storage.connection.executeUpdate("DELETE FROM whitelist WHERE warpId=?", warpId)
+        try {
+            storage.connection.executeUpdate("DELETE FROM whitelist WHERE warpId=?", warpId)
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            whitelistMap.remove(warpId)
+        } catch (error: SQLException) {
+            logger.severe("Failed to remove all whitelist entries for warp $warpId: ${error.message}")
+            error.printStackTrace()
+        }
     }
 
     private fun preload() {

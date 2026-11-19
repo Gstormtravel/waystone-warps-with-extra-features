@@ -340,7 +340,7 @@ class WarpMenu(
                 }
             }
             customLore.add(0, "§8$locationText")
-            customLore.add(0, "§b${warpModel.player.name}")
+            customLore.add(0, "§b${warpModel.player.name ?: "Unknown"}")
 
             val hasTeleportPermission = player.hasPermission("waystonewarps.teleport")
             val isDifferentWorld = warp.worldId != player.world.uid
@@ -507,8 +507,9 @@ class WarpMenu(
             playerCounter++
 
             // Check if the current page is full (21 players)
+            // Correção BUG 1
             if (playerCounter >= 21) {
-                playerPane.addPage(Slot.fromXY(1, 2), currentPagePane)
+                playerPane.addPage(Slot.fromXY(0, 0), currentPagePane)
                 currentPagePane = OutlinePane(7, 3)
                 playerCounter = 0
             }

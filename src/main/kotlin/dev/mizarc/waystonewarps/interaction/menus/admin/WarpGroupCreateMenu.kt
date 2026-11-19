@@ -24,7 +24,34 @@ class WarpGroupCreateMenu(
     private val createWarpGroup: CreateWarpGroup by inject()
     private val plugin = org.bukkit.Bukkit.getPluginManager().getPlugin("WaystoneWarps")!!
 
+    private fun isBedrockPlayer(): Boolean {
+        return try {
+            org.geysermc.floodgate.api.FloodgateApi.getInstance().isFloodgatePlayer(player.uniqueId)
+        } catch (e: Exception) { false }
+    }
+
     override fun open() {
+        if (isBedrockPlayer()) openBedrockForm() else openAnvilGui()
+    }
+
+    private fun openBedrockForm() {
+        try {
+            val floodgateApi = org.geysermc.floodgate.api.FloodgateApi.getInstance()
+            val form = org.geysermc.cumulus.form.CustomForm.builder()
+                .title(localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_GROUP_CREATE_TITLE))
+                .input("Group Name", "")
+                .validResultHandler { response ->
+                    val input = response.asInput(0)?.trim() ?: return@validResultHandler
+                    plugin.server.scheduler.runTask(plugin, Runnable { submitName(input) })
+                }
+                .build()
+            floodgateApi.sendForm(player.uniqueId, form)
+        } catch (e: Exception) {
+            plugin.logger.warning("Failed to open Bedrock form for ${player.name}: ${e.message}")
+        }
+    }
+
+    private fun openAnvilGui() {
         val bookItem = ItemStack(Material.BOOKSHELF)
             .name(localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_GROUP_MANAGEMENT_CREATE_NAME))
 
@@ -35,21 +62,25 @@ class WarpGroupCreateMenu(
             .onClick { slot, state ->
                 if (slot != AnvilGUI.Slot.OUTPUT) return@onClick listOf()
                 val input = state.text.trim()
-                when (createWarpGroup.execute(player.uniqueId, input)) {
-                    CreateWarpGroupResult.SUCCESS -> {
-                        menuNavigator.goBack()
-                        listOf(AnvilGUI.ResponseAction.close())
-                    }
-                    CreateWarpGroupResult.NAME_BLANK -> {
-                        listOf(AnvilGUI.ResponseAction.replaceInputText(""))
-                    }
-                    CreateWarpGroupResult.NAME_TAKEN -> {
-                        player.sendMessage("§c${localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_GROUP_RENAME_NAME_TAKEN)}")
-                        listOf(AnvilGUI.ResponseAction.replaceInputText(""))
-                    }
-                }
+                submitName(input)
+                listOf(AnvilGUI.ResponseAction.close())
             }
             .onClose { menuNavigator.goBack() }
             .open(player)
+    }
+
+    private fun submitName(inputName: String) {
+        when (createWarpGroup.execute(player.uniqueId, inputName)) {
+            CreateWarpGroupResult.SUCCESS -> {
+                menuNavigator.goBack()
+            }
+            CreateWarpGroupResult.NAME_BLANK -> {
+                if (!isBedrockPlayer()) openAnvilGui() else openBedrockForm()
+            }
+            CreateWarpGroupResult.NAME_TAKEN -> {
+                player.sendMessage("§c${localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_GROUP_RENAME_NAME_TAKEN)}")
+                if (!isBedrockPlayer()) openAnvilGui() else openBedrockForm()
+            }
+        }
     }
 }

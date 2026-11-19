@@ -109,10 +109,6 @@ class WaystoneInteractListener(private val configService: ConfigService): Listen
                     return
                 }
 
-                if (configService.allowWarpsMenuViaWaystone()) {
-                    menuNavigator.openMenu(WarpMenu(player, menuNavigator, localizationProvider))
-                }
-
                 // Global warps are always accessible — no discovery needed
                 if (warp.accessLevel == WarpAccess.GLOBAL) {
                     if (configService.allowWarpsMenuViaWaystone()) {
@@ -123,28 +119,35 @@ class WaystoneInteractListener(private val configService: ConfigService): Listen
 
                 // Check if player has permission to discover warps
                 if (!player.hasPermission("waystonewarps.discover")) {
-                    player.sendActionBar(Component.text("You don't have permission to discover warps").color(PrimaryColourPalette.FAILED.color))
+                    player.sendActionBar(
+                        Component.text("You don't have permission to discover warps")
+                            .color(PrimaryColourPalette.FAILED.color)
+                    )
                     return
                 }
 
                 val result = discoverWarp.execute(player.uniqueId, it.id)
                 if (result) {
-                    player.sendActionBar(Component.text("Warp ").color(PrimaryColourPalette.SUCCESS.color)
-                        .append(Component.text(warp.name).color(AccentColourPalette.SUCCESS.color))
-                        .append(Component.text( " has been discovered!").color(PrimaryColourPalette.SUCCESS.color)))
+                    player.sendActionBar(
+                        Component.text("Warp ").color(PrimaryColourPalette.SUCCESS.color)
+                            .append(Component.text(warp.name).color(AccentColourPalette.SUCCESS.color))
+                            .append(Component.text(" has been discovered!").color(PrimaryColourPalette.SUCCESS.color))
+                    )
                     clickedBlock.world.spawnParticle(Particle.TOTEM_OF_UNDYING, particleLocation, 20)
                     clickedBlock.world.playSound(particleLocation, Sound.BLOCK_AMETHYST_BLOCK_HIT, SoundCategory.BLOCKS, 1.0f, 1.0f)
                 } else {
                     if (configService.allowWarpsMenuViaWaystone()) {
                         menuNavigator.openMenu(WarpMenu(player, menuNavigator, localizationProvider))
-                    }
-                    else {
-                        player.sendActionBar(Component.text("Warp ").color(PrimaryColourPalette.INFO.color)
-                            .append(Component.text(warp.name).color(AccentColourPalette.INFO.color))
-                            .append(Component.text( " already discovered").color(PrimaryColourPalette.INFO.color)))
+                    } else {
+                        player.sendActionBar(
+                            Component.text("Warp ").color(PrimaryColourPalette.INFO.color)
+                                .append(Component.text(warp.name).color(AccentColourPalette.INFO.color))
+                                .append(Component.text(" already discovered").color(PrimaryColourPalette.INFO.color))
+                        )
                     }
                 }
             }
+            return
         }
 
         // Check if valid warp base to create warp

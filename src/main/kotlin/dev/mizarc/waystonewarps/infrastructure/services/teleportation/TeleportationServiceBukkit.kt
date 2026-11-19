@@ -376,7 +376,16 @@ class TeleportationServiceBukkit(private val playerAttributeService: PlayerAttri
         val (dx, dz) = getLandingOffset(playerYaw)
         // Clear only the two blocks the player will occupy at the landing spot (feet and head)
         for (dy in -1..0) {
-            val block = location.world.getBlockAt(location.blockX + dx, location.blockY + dy, location.blockZ + dz)
+            val targetX = location.blockX + dx
+            val targetY = location.blockY + dy
+            val targetZ = location.blockZ + dz
+
+            // Evita quebrar blocos que façam parte da própria estrutura da waystone (pos e pos com y - 1)
+            val isWaystoneStructure = (targetX == location.blockX && targetZ == location.blockZ) &&
+                    (targetY == location.blockY || targetY == location.blockY - 1)
+            if (isWaystoneStructure) continue
+
+            val block = location.world.getBlockAt(targetX, targetY, targetZ)
             if (!block.type.isAir) {
                 block.breakNaturally()
             }

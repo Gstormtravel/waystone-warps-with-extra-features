@@ -1,20 +1,36 @@
 ### IDE ###
 .vscode/
 .idea/
+*.iml
 .project
 .classpath
 
-### Kotlin ###
+### AI & Agent Caches ###
+.agents/
+.kotlin/
+
+### Kotlin & Java ###
 *.class
 *.log
 hs_err_pid*
 
+### Database & Backups ###
+*.db
+*.db-wal
+*.db-shm
+*.db.corrupted*
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+backups/
+
 ### Gradle ###
-.gradle
+.gradle/
 build/
 local.properties
 gradle-app.setting
 .gradletasknamecache
 
-# Keep Gradle wrapper jar
-!gradle-wrapper.jar
+### Jars outside explicit release folders ###
+*.jar
+!gradle/wrapper/gradle-wrapper.jar

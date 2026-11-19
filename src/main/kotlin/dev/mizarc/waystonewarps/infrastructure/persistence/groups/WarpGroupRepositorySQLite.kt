@@ -4,9 +4,14 @@ import co.aikar.idb.Database
 import dev.mizarc.waystonewarps.domain.warps.WarpGroup
 import dev.mizarc.waystonewarps.domain.warps.WarpGroupRepository
 import dev.mizarc.waystonewarps.infrastructure.persistence.storage.Storage
+import java.sql.SQLException
 import java.util.UUID
+import java.util.logging.Logger
 
-class WarpGroupRepositorySQLite(private val storage: Storage<Database>) : WarpGroupRepository {
+class WarpGroupRepositorySQLite(
+    private val storage: Storage<Database>,
+    private val logger: Logger = Logger.getLogger("WaystoneWarps")
+) : WarpGroupRepository {
     private val groups: MutableMap<UUID, WarpGroup> = mutableMapOf()
 
     init {
@@ -21,24 +26,42 @@ class WarpGroupRepositorySQLite(private val storage: Storage<Database>) : WarpGr
         groups.values.firstOrNull { it.name.equals(name, ignoreCase = true) }
 
     override fun add(group: WarpGroup) {
-        groups[group.id] = group
-        storage.connection.executeInsert(
-            "INSERT INTO warp_groups (id, name, createdBy) VALUES (?, ?, ?);",
-            group.id, group.name, group.createdBy
-        )
+        try {
+            storage.connection.executeInsert(
+                "INSERT INTO warp_groups (id, name, createdBy) VALUES (?, ?, ?);",
+                group.id, group.name, group.createdBy
+            )
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            groups[group.id] = group
+        } catch (error: SQLException) {
+            logger.severe("Failed to add warp group ${group.id} (${group.name}): ${error.message}")
+            error.printStackTrace()
+        }
     }
 
     override fun update(group: WarpGroup) {
-        groups[group.id] = group
-        storage.connection.executeUpdate(
-            "UPDATE warp_groups SET name=?, createdBy=? WHERE id=?",
-            group.name, group.createdBy, group.id
-        )
+        try {
+            storage.connection.executeUpdate(
+                "UPDATE warp_groups SET name=?, createdBy=? WHERE id=?",
+                group.name, group.createdBy, group.id
+            )
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            groups[group.id] = group
+        } catch (error: SQLException) {
+            logger.severe("Failed to update warp group ${group.id} (${group.name}): ${error.message}")
+            error.printStackTrace()
+        }
     }
 
     override fun remove(id: UUID) {
-        groups.remove(id)
-        storage.connection.executeUpdate("DELETE FROM warp_groups WHERE id=?", id)
+        try {
+            storage.connection.executeUpdate("DELETE FROM warp_groups WHERE id=?", id)
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            groups.remove(id)
+        } catch (error: SQLException) {
+            logger.severe("Failed to remove warp group $id: ${error.message}")
+            error.printStackTrace()
+        }
     }
 
     private fun preload() {

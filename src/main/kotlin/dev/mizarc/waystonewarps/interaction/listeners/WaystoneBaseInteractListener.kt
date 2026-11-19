@@ -56,7 +56,8 @@ class WaystoneBaseInteractListener: Listener, KoinComponent {
         if (warp.playerId != player.uniqueId) return
 
         // Swap out block type if block is compatible
-        val existingBlock = Material.valueOf(warp.block)
+        val existingBlock = runCatching { Material.valueOf(warp.block) }.getOrNull() ?: return
+        if (existingBlock.name == itemInHand.type.name) return
         val result = updateWarpSkin.execute(warp.id, itemInHand.type.toString())
         when (result) {
             UpdateWarpSkinResult.SUCCESS -> {

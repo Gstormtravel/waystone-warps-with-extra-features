@@ -143,7 +143,8 @@ class WaystoneWarps: JavaPlugin() {
         if (!dataFolder.exists()) dataFolder.mkdir()
 
         // Get storage type
-        storage = SQLiteStorage(this.dataFolder)
+        val sqliteStorage = SQLiteStorage(this.dataFolder, this.logger)
+        storage = sqliteStorage
 
         try {
             SchemaMigrator(
@@ -163,6 +164,9 @@ class WaystoneWarps: JavaPlugin() {
             server.pluginManager.disablePlugin(this)
             return
         }
+
+        // Sanitização de registros órfãos pós-migração
+        sqliteStorage.sanitizeOrphanRecords()
 
         // Get command manager
         commandManager = PaperCommandManager(this)
@@ -193,6 +197,9 @@ class WaystoneWarps: JavaPlugin() {
 
     override fun onDisable() {
         RemoveAllDisplays(warpRepository, structureBuilderService, hologramService).execute()
+        if (::storage.isInitialized && storage is SQLiteStorage) {
+            (storage as SQLiteStorage).shutdown()
+        }
         logger.info("WaystoneWarps has been Disabled")
     }
 
@@ -322,7 +329,7 @@ class WaystoneWarps: JavaPlugin() {
             single { GetWarpAtPosition(warpRepository) }
             single { BreakWarpBlock(warpRepository, structureBuilderService,
                 discoveryRepository, whitelistRepository, structureParticleService, hologramService, warpEventPublisher,
-                warpNotificationRepository) }
+                warpNotificationRepository, coOwnerRepository) }
             single { TeleportPlayerImmediately(teleportationService) }
             single { TeleportPlayer(teleportationService, playerAttributeService, playerParticleService, playerCountdownService,
                 discoveryRepository, warpEventPublisher, get(), playerStateRepository)}

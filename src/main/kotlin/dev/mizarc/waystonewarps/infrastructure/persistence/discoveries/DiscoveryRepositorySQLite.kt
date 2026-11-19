@@ -7,8 +7,12 @@ import dev.mizarc.waystonewarps.infrastructure.persistence.storage.Storage
 import java.sql.SQLException
 import java.time.Instant
 import java.util.*
+import java.util.logging.Logger
 
-class DiscoveryRepositorySQLite(private val storage: Storage<Database>): DiscoveryRepository {
+class DiscoveryRepositorySQLite(
+    private val storage: Storage<Database>,
+    private val logger: Logger = Logger.getLogger("WaystoneWarps")
+): DiscoveryRepository {
     private val discoveries: MutableMap<UUID, MutableSet<Discovery>> = mutableMapOf()
 
     init {
@@ -37,59 +41,57 @@ class DiscoveryRepositorySQLite(private val storage: Storage<Database>): Discove
     }
 
     override fun add(discovery: Discovery) {
-        val playerDiscoveries = discoveries.getOrPut(discovery.playerId) { mutableSetOf() }
-        playerDiscoveries.add(discovery)
-
         try {
-            storage.connection.executeUpdate("INSERT INTO discoveries (warpId, playerId, discoveredTime, " +
-                    "lastVisitedTime, isFavourite) VALUES (?,?,?,?,?)",
+            storage.connection.executeUpdate(
+                "INSERT OR REPLACE INTO discoveries (warpId, playerId, discoveredTime, lastVisitedTime, isFavourite) VALUES (?,?,?,?,?)",
                 discovery.warpId, discovery.playerId, discovery.discoveredTime,
-                discovery.lastVisitedTime, discovery.isFavourite)
+                discovery.lastVisitedTime, discovery.isFavourite
+            )
+
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            val playerDiscoveries = discoveries.getOrPut(discovery.playerId) { mutableSetOf() }
+            playerDiscoveries.removeIf { it.warpId == discovery.warpId }
+            playerDiscoveries.add(discovery)
         } catch (error: SQLException) {
+            logger.severe("Failed to add discovery for warp ${discovery.warpId} and player ${discovery.playerId}: ${error.message}")
             error.printStackTrace()
         }
     }
 
     override fun update(discovery: Discovery) {
-        val playerDiscoveries = discoveries[discovery.playerId] ?: return
-        // Find the existing discovery in the set
-        val existingDiscovery = playerDiscoveries.find { it.warpId == discovery.warpId }
-        if (existingDiscovery != null) {
-            // Remove the old entry and add the updated one
-            playerDiscoveries.remove(existingDiscovery)
-            playerDiscoveries.add(discovery)
-        } else {
-            // Add the new discovery if it doesn't already exist
-            playerDiscoveries.add(discovery)
-        }
-
-        storage.connection.executeUpdate("UPDATE discoveries SET lastVisitedTime=?, isFavourite=? " +
-                "WHERE warpId=? AND playerId=?",
-            discovery.lastVisitedTime, discovery.isFavourite, discovery.warpId, discovery.playerId)
-        return
-    }
-
-    override fun remove(warpId: UUID, playerId: UUID) {
-        val playerDiscoveries = discoveries[playerId]
-        playerDiscoveries?.removeIf { it.warpId == warpId }
-
         try {
-            storage.connection.executeUpdate("DELETE FROM discoveries WHERE warpId=? AND playerId=?",
-                warpId, playerId)
+            storage.connection.executeUpdate(
+                "UPDATE discoveries SET lastVisitedTime=?, isFavourite=? WHERE warpId=? AND playerId=?",
+                discovery.lastVisitedTime, discovery.isFavourite, discovery.warpId, discovery.playerId
+            )
+
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            val playerDiscoveries = discoveries[discovery.playerId] ?: return
+            val existingDiscovery = playerDiscoveries.find { it.warpId == discovery.warpId }
+            if (existingDiscovery != null) {
+                playerDiscoveries.remove(existingDiscovery)
+                playerDiscoveries.add(discovery)
+            } else {
+                playerDiscoveries.add(discovery)
+            }
         } catch (error: SQLException) {
+            logger.severe("Failed to update discovery for warp ${discovery.warpId} and player ${discovery.playerId}: ${error.message}")
             error.printStackTrace()
         }
     }
 
-    /**
-     * Creates a new table to store discoveries data if it doesn't exist.
-     */
-    private fun createTable() {
+    override fun remove(warpId: UUID, playerId: UUID) {
         try {
-            storage.connection.executeUpdate("CREATE TABLE IF NOT EXISTS discoveries (warpId TEXT, " +
-                    "playerId TEXT, discoveredTime TEXT, lastVisitedTime TEXT, isFavourite INTEGER," +
-                    "PRIMARY KEY(warpId, playerId));")
+            storage.connection.executeUpdate(
+                "DELETE FROM discoveries WHERE warpId=? AND playerId=?",
+                warpId, playerId
+            )
+
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            val playerDiscoveries = discoveries[playerId]
+            playerDiscoveries?.removeIf { it.warpId == warpId }
         } catch (error: SQLException) {
+            logger.severe("Failed to remove discovery for warp $warpId and player $playerId: ${error.message}")
             error.printStackTrace()
         }
     }
@@ -109,8 +111,7 @@ class DiscoveryRepositorySQLite(private val storage: Storage<Database>): Discove
                 val discovery = Discovery(warpId, playerId, discoveredTime, lastVisitedTime, isFavourite)
                 val foundDiscoveries = discoveries.getOrPut(playerId) { mutableSetOf(discovery) }
                 foundDiscoveries.add(discovery)
-            }
-            catch (error: IllegalArgumentException) {
+            } catch (error: IllegalArgumentException) {
                 continue
             }
         }

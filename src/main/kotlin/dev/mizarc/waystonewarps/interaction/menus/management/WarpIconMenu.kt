@@ -20,6 +20,7 @@ import dev.mizarc.waystonewarps.interaction.utils.name
 import io.papermc.paper.datacomponent.DataComponentTypes
 import io.papermc.paper.registry.RegistryAccess
 import io.papermc.paper.registry.RegistryKey
+import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
@@ -31,7 +32,6 @@ import org.bukkit.inventory.meta.PotionMeta
 import org.bukkit.inventory.meta.SkullMeta
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import kotlin.concurrent.thread
 
 class WarpIconMenu(
     private val player: Player,
@@ -41,6 +41,7 @@ class WarpIconMenu(
     private val updateWarpIcon: UpdateWarpIcon by inject()
     private val getCoOwners: GetCoOwners by inject()
     private val localizationProvider: LocalizationProvider by inject()
+    private val plugin = Bukkit.getPluginManager().getPlugin("WaystoneWarps")!!
 
     @Suppress("UnstableApiUsage")
     override fun open() {
@@ -79,10 +80,7 @@ class WarpIconMenu(
 
             inputPane.addItem(GuiItem(ItemStack(itemOnCursor.clone())), 0, 0)
             gui.update()
-            thread(start = true) {
-                Thread.sleep(1)
-                player.setItemOnCursor(itemOnCursor)
-            }
+            Bukkit.getScheduler().runTask(plugin, Runnable { player.setItemOnCursor(itemOnCursor) })
         }
         gui.ingredientComponent.addPane(Slot.fromXY(0, 0), inputPane)
 

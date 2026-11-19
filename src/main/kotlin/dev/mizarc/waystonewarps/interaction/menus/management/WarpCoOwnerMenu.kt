@@ -165,26 +165,4 @@ class WarpCoOwnerMenu(
             menuNavigator.openMenu(PlayerSearchMenu(player, menuNavigator))
         }
     }
-
-    private fun openChatInput() {
-        player.closeInventory()
-        player.sendMessage("§6Type the name of the player to add as co-owner (or type §ccancel§6 to abort)")
-        val listener = object : org.bukkit.event.Listener {
-            @org.bukkit.event.EventHandler
-            fun onChat(event: org.bukkit.event.player.AsyncPlayerChatEvent) {
-                if (event.player.uniqueId != player.uniqueId) return
-                event.isCancelled = true
-                org.bukkit.event.HandlerList.unregisterAll(this)
-                val input = event.message.trim()
-                if (input.equals("cancel", ignoreCase = true)) {
-                    plugin.server.scheduler.runTask(plugin, Runnable { open() })
-                    return
-                }
-                plugin.server.scheduler.runTask(plugin, Runnable {
-                    passData(input)
-                })
-            }
-        }
-        plugin.server.pluginManager.registerEvents(listener, plugin)
-    }
 }

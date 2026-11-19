@@ -8,10 +8,15 @@ import dev.mizarc.waystonewarps.domain.warps.WarpAccess
 import dev.mizarc.waystonewarps.domain.warps.WarpRepository
 import dev.mizarc.waystonewarps.infrastructure.persistence.storage.Storage
 import kotlinx.serialization.json.Json
+import java.sql.SQLException
 import java.time.Instant
 import java.util.*
+import java.util.logging.Logger
 
-class WarpRepositorySQLite(private val storage: Storage<Database>): WarpRepository {
+class WarpRepositorySQLite(
+    private val storage: Storage<Database>,
+    private val logger: Logger = Logger.getLogger("WaystoneWarps")
+): WarpRepository {
     private val warps: MutableMap<UUID, Warp> = mutableMapOf()
 
     private val iconMetaJson = Json {
@@ -49,28 +54,44 @@ class WarpRepositorySQLite(private val storage: Storage<Database>): WarpReposito
     }
 
     override fun add(warp: Warp) {
-        warps[warp.id] = warp
         val iconMetaJsonString = iconMetaJson.encodeToString(warp.iconMeta)
-        storage.connection.executeInsert("INSERT INTO warps (id, playerId, creationTime, name, worldId, " +
-                "positionX, positionY, positionZ, icon, iconMeta, block, accessLevel, groupId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-            warp.id, warp.playerId, warp.creationTime, warp.name, warp.worldId,
-            warp.position.x, warp.position.y, warp.position.z, warp.icon, iconMetaJsonString, warp.block, warp.accessLevel.name, warp.groupId)
+        try {
+            storage.connection.executeInsert("INSERT INTO warps (id, playerId, creationTime, name, worldId, " +
+                    "positionX, positionY, positionZ, icon, iconMeta, block, accessLevel, groupId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+                warp.id, warp.playerId, warp.creationTime, warp.name, warp.worldId,
+                warp.position.x, warp.position.y, warp.position.z, warp.icon, iconMetaJsonString, warp.block, warp.accessLevel.name, warp.groupId)
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            warps[warp.id] = warp
+        } catch (error: SQLException) {
+            logger.severe("Failed to add warp ${warp.id} (${warp.name}): ${error.message}")
+            error.printStackTrace()
+        }
     }
 
     override fun update(warp: Warp) {
-        warps.remove(warp.id)
-        warps[warp.id] = warp
         val iconMetaJsonString = iconMetaJson.encodeToString(warp.iconMeta)
-        storage.connection.executeUpdate("UPDATE warps SET playerId=?, creationTime=?, name=?, worldId=?, " +
-                "positionX=?, positionY=?, positionZ=?, icon=?, iconMeta=?, block=?, accessLevel=?, groupId=? WHERE id=?",
-            warp.playerId, warp.creationTime, warp.name, warp.worldId, warp.position.x, warp.position.y,
-            warp.position.z, warp.icon, iconMetaJsonString, warp.block, warp.accessLevel.name, warp.groupId, warp.id)
-        return
+        try {
+            storage.connection.executeUpdate("UPDATE warps SET playerId=?, creationTime=?, name=?, worldId=?, " +
+                    "positionX=?, positionY=?, positionZ=?, icon=?, iconMeta=?, block=?, accessLevel=?, groupId=? WHERE id=?",
+                warp.playerId, warp.creationTime, warp.name, warp.worldId, warp.position.x, warp.position.y,
+                warp.position.z, warp.icon, iconMetaJsonString, warp.block, warp.accessLevel.name, warp.groupId, warp.id)
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            warps[warp.id] = warp
+        } catch (error: SQLException) {
+            logger.severe("Failed to update warp ${warp.id} (${warp.name}): ${error.message}")
+            error.printStackTrace()
+        }
     }
 
     override fun remove(id: UUID) {
-        warps.remove(id)
-        storage.connection.executeUpdate("DELETE FROM warps WHERE id=?", id)
+        try {
+            storage.connection.executeUpdate("DELETE FROM warps WHERE id=?", id)
+            // Atualiza cache em memória somente após o sucesso da query SQL
+            warps.remove(id)
+        } catch (error: SQLException) {
+            logger.severe("Failed to remove warp $id: ${error.message}")
+            error.printStackTrace()
+        }
     }
 
     private fun preload() {

@@ -55,7 +55,10 @@ class WaystoneDestructionListener: Listener, KoinComponent {
 
             val result = breakWarpBlock.execute(position, event.block.world.uid)
             when (result) {
-                is BreakWarpResult.Success -> triggerSuccess(event.player, result.warp)
+                is BreakWarpResult.Success -> {
+                    triggerSuccess(event.player, result.warp)
+                    return
+                }
                 is BreakWarpResult.Breaking -> {
                     val message = localizationProvider.get(
                         event.player.uniqueId,

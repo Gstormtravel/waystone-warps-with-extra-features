@@ -257,7 +257,7 @@ class WarpPlayerMenu(private val player: Player, private val menuNavigator: Menu
 
             // Create player menu item
             val playerItem = createHead(foundPlayer)
-                .name("${foundPlayer.name}")
+                .name("${foundPlayer.name ?: "Unknown"}")
                 .lore(customLore)
 
             // Define actions on clickable player head icon

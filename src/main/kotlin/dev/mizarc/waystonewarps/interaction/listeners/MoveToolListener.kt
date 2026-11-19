@@ -1,5 +1,6 @@
 package dev.mizarc.waystonewarps.interaction.listeners
 
+import dev.mizarc.waystonewarps.application.actions.coowner.GetCoOwners
 import dev.mizarc.waystonewarps.application.actions.world.MoveWarp
 import dev.mizarc.waystonewarps.application.results.MoveWarpResult
 import dev.mizarc.waystonewarps.domain.warps.WarpRepository
@@ -23,6 +24,7 @@ import java.util.UUID
 class MoveToolListener: Listener, KoinComponent {
     private val moveWarp: MoveWarp by inject()
     private val warpRepository: WarpRepository by inject()
+    private val getCoOwners: GetCoOwners by inject()
     private val localizationProvider: LocalizationProvider by inject()
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -47,7 +49,7 @@ class MoveToolListener: Listener, KoinComponent {
         }
 
         // Check if player has permission to relocate this warp
-        if (!PermissionHelper.canRelocate(event.player, warp.playerId)) {
+        if (!PermissionHelper.canRelocate(event.player, warp.playerId, getCoOwners.execute(warp.id))) {
             val message = localizationProvider.get(
                 event.player.uniqueId, 
                 LocalizationKeys.FEEDBACK_MOVE_TOOL_NO_PERMISSION
@@ -83,6 +85,8 @@ class MoveToolListener: Listener, KoinComponent {
         )
         when (result) {
             MoveWarpResult.SUCCESS -> {
+                event.isCancelled = true
+                event.player.inventory.setItemInMainHand(null)
                 val message = localizationProvider.get(
                     event.player.uniqueId, 
                     LocalizationKeys.FEEDBACK_MOVE_TOOL_SUCCESS

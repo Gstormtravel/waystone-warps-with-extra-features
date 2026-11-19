@@ -120,13 +120,7 @@ class ToolRemovalListener: Listener {
 
     @EventHandler
     fun onPlayerDeath(event: PlayerDeathEvent) {
-        val droppedItems = event.drops
-        val itemsToRemove = arrayListOf<ItemStack>()
-        for (droppedItem in droppedItems) {
-            if (isKeyItem(droppedItem)) {
-                itemsToRemove.add(droppedItem)
-            }
-        }
+        event.drops.removeIf { isKeyItem(it) }
     }
 
     private fun isKeyItem(itemStack: ItemStack): Boolean {
