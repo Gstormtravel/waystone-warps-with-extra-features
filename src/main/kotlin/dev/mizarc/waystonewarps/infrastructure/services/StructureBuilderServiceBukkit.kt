@@ -11,25 +11,37 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.World
 import org.bukkit.entity.BlockDisplay
+import org.bukkit.entity.Display
 import org.bukkit.entity.Entity
-import org.bukkit.entity.EntityType
 import org.bukkit.plugin.Plugin
 import org.bukkit.scheduler.BukkitRunnable
 import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
-import java.util.*
+import java.util.UUID
 
-class StructureBuilderServiceBukkit(private val plugin: Plugin, private val configService: ConfigService): StructureBuilderService {
+class StructureBuilderServiceBukkit(
+    private val plugin: Plugin,
+    private val configService: ConfigService
+) : StructureBuilderService {
 
     override fun spawnStructure(warp: Warp) {
         val world = Bukkit.getWorld(warp.worldId) ?: return
+        val location = warp.position.toLocation(world)
+        if (!location.chunk.isLoaded) {
+            location.chunk.load()
+        }
+        removeBlockDisplay(warp, world)
         val structureBlocks = getStructureBlocks(warp)
         generateStructure(warp, structureBlocks, world)
     }
 
     override fun updateStructure(warp: Warp) {
         val world = Bukkit.getWorld(warp.worldId) ?: return
+        val location = warp.position.toLocation(world)
+        if (!location.chunk.isLoaded) {
+            location.chunk.load()
+        }
         val structureBlocks = getStructureBlocks(warp)
 
         // Generate and then remove existing block display after 2 ticks to prevent flashing
@@ -44,22 +56,33 @@ class StructureBuilderServiceBukkit(private val plugin: Plugin, private val conf
     override fun revertStructure(warp: Warp) {
         val world = Bukkit.getWorld(warp.worldId) ?: return
         val location = warp.position.toLocation(world)
+        if (!location.chunk.isLoaded) {
+            location.chunk.load()
+        }
         world.getBlockAt(location.blockX, location.blockY, location.blockZ).type = Material.LODESTONE
-        world.getBlockAt(location.blockX, location.blockY - 1, location.blockZ).type = Material.valueOf(warp.block)
+        world.getBlockAt(location.blockX, location.blockY - 1, location.blockZ).type =
+            runCatching { Material.valueOf(warp.block) }.getOrDefault(Material.SMOOTH_STONE)
         removeBlockDisplay(warp, world)
     }
 
     override fun destroyStructure(warp: Warp) {
         val world = Bukkit.getWorld(warp.worldId) ?: return
         val location = warp.position.toLocation(world)
+        if (!location.chunk.isLoaded) {
+            location.chunk.load()
+        }
         location.block.type = Material.AIR
         world.getBlockAt(location.blockX, location.blockY - 1, location.blockZ).type = Material.AIR
         removeBlockDisplay(warp, world)
     }
 
     private fun getStructureBlocks(warp: Warp): List<Material> {
-        val defaultStructureBlocks = listOf(Material.SMOOTH_STONE, Material.LODESTONE, Material.SMOOTH_STONE,
-            Material.SMOOTH_STONE, Material.SMOOTH_STONE_SLAB
+        val defaultStructureBlocks = listOf(
+            Material.SMOOTH_STONE,
+            Material.LODESTONE,
+            Material.SMOOTH_STONE,
+            Material.SMOOTH_STONE,
+            Material.SMOOTH_STONE_SLAB
         )
         return try {
             val blocks = configService.getStructureBlocks(warp.block)
@@ -88,36 +111,67 @@ class StructureBuilderServiceBukkit(private val plugin: Plugin, private val conf
 
         // Create and return entities
         return mutableListOf(
-            createBlockDisplay(warp.id, location, structureBlocks[0],
+            createBlockDisplay(
+                warp.id, location, structureBlocks[0],
                 0.075f, 1.3f, 0.075f,
-                0.85f, 0.85f, 0.85f),
-            createBlockDisplay(warp.id, location, structureBlocks[2],
+                0.85f, 0.85f, 0.85f
+            ),
+            createBlockDisplay(
+                warp.id, location, structureBlocks[2],
                 0.075f, 0.8f, 0.075f,
-                0.85f, 0.85f, 0.85f),
-            createBlockDisplay(warp.id, location, structureBlocks[3],
+                0.85f, 0.85f, 0.85f
+            ),
+            createBlockDisplay(
+                warp.id, location, structureBlocks[3],
                 0.2f, 0.4f, 0.2f,
-                0.6f, 0.6f, 0.6f)
+                0.6f, 0.6f, 0.6f
+            )
         )
     }
 
-    private fun createBlockDisplay(warpId: UUID, baseLocation: Location, material: Material,
-                                   offsetX: Float, offsetY: Float, offsetZ: Float,
-                                   scaleX: Float, scaleY: Float, scaleZ: Float): Entity {
-        // Create BlockData
+    private fun createBlockDisplay(
+        warpId: UUID,
+        baseLocation: Location,
+        material: Material,
+        offsetX: Float,
+        offsetY: Float,
+        offsetZ: Float,
+        scaleX: Float,
+        scaleY: Float,
+        scaleZ: Float
+    ): Entity {
         val blockData = material.createBlockData()
-        val location = baseLocation.clone()
-        location.y -= 1
-        val blockDisplay = baseLocation.world.spawnEntity(location, EntityType.BLOCK_DISPLAY) as BlockDisplay
-        blockDisplay.block = blockData
+        // Spawn centered in the block column (x + 0.5, y - 1.0, z + 0.5) for Geyser/Bedrock compatibility
+        // and compensate by -0.5f on X/Z translation so Java rendering remains pixel-identical.
+        val spawnLocation = baseLocation.clone().apply {
+            x = blockX + 0.5
+            y = (blockY - 1).toDouble()
+            z = blockZ + 0.5
+            yaw = 0f
+            pitch = 0f
+        }
 
-        // Transform display
         val transformation = Transformation(
-            Vector3f(offsetX, offsetY, offsetZ), AxisAngle4f(),
-            Vector3f(scaleX, scaleY, scaleZ), AxisAngle4f())
-        blockDisplay.transformation = transformation
-        blockDisplay.customName(Component.text((warpId.toString())))
+            Vector3f(offsetX - 0.5f, offsetY, offsetZ - 0.5f),
+            AxisAngle4f(0f, 0f, 0f, 1f),
+            Vector3f(scaleX, scaleY, scaleZ),
+            AxisAngle4f(0f, 0f, 0f, 1f)
+        )
 
-        return blockDisplay
+        return baseLocation.world.spawn(spawnLocation, BlockDisplay::class.java) { blockDisplay ->
+            blockDisplay.block = blockData
+            blockDisplay.transformation = transformation
+            blockDisplay.billboard = Display.Billboard.FIXED
+            blockDisplay.viewRange = 1.0f
+            blockDisplay.displayWidth = 1.0f
+            blockDisplay.displayHeight = 1.0f
+            blockDisplay.interpolationDuration = 0
+            blockDisplay.interpolationDelay = 0
+            blockDisplay.teleportDuration = 0
+            blockDisplay.isPersistent = true
+            blockDisplay.isCustomNameVisible = false
+            blockDisplay.customName(Component.text(warpId.toString()))
+        }
     }
 
     private fun removeBlockDisplay(warp: Warp, world: World, entityExclusions: List<Entity> = listOf()) {
