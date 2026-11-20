@@ -44,9 +44,10 @@ class WarpOptionsMenu(
             warp.name
         ))
         val pane = StaticPane(5, 1)
-        gui.setOnTopClick { guiEvent -> guiEvent.isCancelled = true }
-        gui.setOnBottomClick { guiEvent -> if (guiEvent.click == ClickType.SHIFT_LEFT ||
-            guiEvent.click == ClickType.SHIFT_RIGHT) guiEvent.isCancelled = true }
+        gui.setOnGlobalClick { it.isCancelled = true }
+        gui.setOnGlobalDrag { it.isCancelled = true }
+        gui.setOnTopClick { it.isCancelled = true }
+        gui.setOnBottomClick { it.isCancelled = true }
         gui.slotsComponent.addPane(Slot.fromXY(0, 0), pane)
 
         // Add back menu item

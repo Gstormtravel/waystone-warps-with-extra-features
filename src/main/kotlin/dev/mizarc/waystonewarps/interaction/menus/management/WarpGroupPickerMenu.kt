@@ -36,9 +36,10 @@ class WarpGroupPickerMenu(
 
     override fun open() {
         val gui = ChestGui(4, localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_GROUP_PICKER_TITLE))
+        gui.setOnGlobalClick { it.isCancelled = true }
+        gui.setOnGlobalDrag { it.isCancelled = true }
         gui.setOnTopClick { it.isCancelled = true }
-        gui.setOnBottomClick { guiEvent -> if (guiEvent.click == ClickType.SHIFT_LEFT ||
-            guiEvent.click == ClickType.SHIFT_RIGHT) guiEvent.isCancelled = true }
+        gui.setOnBottomClick { it.isCancelled = true }
 
         val controlsPane = StaticPane(6, 1)
 

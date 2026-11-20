@@ -30,9 +30,10 @@ class WarpSkinsMenu(
     override fun open() {
         // Create menu
         val gui = ChestGui(3, localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_SKINS_TITLE))
-        gui.setOnTopClick { guiEvent -> guiEvent.isCancelled = true }
-        gui.setOnBottomClick { guiEvent -> if (guiEvent.click == ClickType.SHIFT_LEFT ||
-            guiEvent.click == ClickType.SHIFT_RIGHT) guiEvent.isCancelled = true }
+        gui.setOnGlobalClick { it.isCancelled = true }
+        gui.setOnGlobalDrag { it.isCancelled = true }
+        gui.setOnTopClick { it.isCancelled = true }
+        gui.setOnBottomClick { it.isCancelled = true }
 
         // Add divider pane
         val dividerPane = StaticPane(1, 3)

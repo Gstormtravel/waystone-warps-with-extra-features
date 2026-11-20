@@ -30,9 +30,10 @@ class ConfirmationMenu(
         // Create menu
         val gui = HopperGui(title)
         val pane = StaticPane(3, 1)
-        gui.setOnTopClick { guiEvent -> guiEvent.isCancelled = true }
-        gui.setOnBottomClick { guiEvent -> if (guiEvent.click == ClickType.SHIFT_LEFT ||
-            guiEvent.click == ClickType.SHIFT_RIGHT) guiEvent.isCancelled = true }
+        gui.setOnGlobalClick { it.isCancelled = true }
+        gui.setOnGlobalDrag { it.isCancelled = true }
+        gui.setOnTopClick { it.isCancelled = true }
+        gui.setOnBottomClick { it.isCancelled = true }
         gui.slotsComponent.addPane(Slot.fromXY(1, 0), pane)
 
         // Add no menu item

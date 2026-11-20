@@ -9,16 +9,13 @@ import dev.mizarc.waystonewarps.interaction.localization.LocalizationProvider
 import dev.mizarc.waystonewarps.interaction.menus.Menu
 import dev.mizarc.waystonewarps.interaction.menus.MenuNavigator
 import dev.mizarc.waystonewarps.interaction.messaging.PrimaryColourPalette
+import dev.mizarc.waystonewarps.interaction.utils.BedrockFormHelper
 import dev.mizarc.waystonewarps.interaction.utils.PermissionHelper
 import dev.mizarc.waystonewarps.interaction.utils.lore
 import dev.mizarc.waystonewarps.interaction.utils.name
 import net.wesjd.anvilgui.AnvilGUI
 import org.bukkit.Material
 import org.bukkit.entity.Player
-import org.bukkit.event.EventHandler
-import org.bukkit.event.HandlerList
-import org.bukkit.event.Listener
-import org.bukkit.event.player.AsyncPlayerChatEvent
 import org.bukkit.inventory.ItemStack
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -33,11 +30,7 @@ class WarpRenamingMenu(
     private val getCoOwners: GetCoOwners by inject()
     private val plugin = org.bukkit.Bukkit.getPluginManager().getPlugin("WaystoneWarps")!!
 
-    private fun isBedrockPlayer(): Boolean {
-        return try {
-            org.geysermc.floodgate.api.FloodgateApi.getInstance().isFloodgatePlayer(player.uniqueId)
-        } catch (e: Exception) { false }
-    }
+    private fun isBedrockPlayer(): Boolean = BedrockFormHelper.isBedrockPlayer(player.uniqueId)
 
     override fun open() {
         val canRename = PermissionHelper.canRename(player, warp.playerId, getCoOwners.execute(warp.id))
@@ -50,26 +43,22 @@ class WarpRenamingMenu(
     }
 
     private fun openBedrockForm() {
-        try {
-            val floodgateApi = org.geysermc.floodgate.api.FloodgateApi.getInstance()
-            val form = org.geysermc.cumulus.form.CustomForm.builder()
-                .title("Rename Waystone")
-                .input("Enter new name here", "")
-                .validResultHandler { response ->
-                    val input = response.asInput(0)?.trim() ?: return@validResultHandler
-                    plugin.server.scheduler.runTask(plugin, Runnable { submitName(input) })
-                }
-                .build()
-            floodgateApi.sendForm(player.uniqueId, form)
-        } catch (e: Exception) {
-            plugin.logger.warning("Failed to open Bedrock form for ${player.name}: ${e.message}")
-        }
+        BedrockFormHelper.sendCustomInputForm(
+            plugin = plugin,
+            player = player,
+            title = "Rename Waystone",
+            label = "Enter new name here",
+            placeholder = warp.name,
+            defaultValue = warp.name,
+            onSubmit = { input -> submitName(input) }
+        )
     }
 
     private fun openAnvilGui() {
         val lodestoneItem = ItemStack(Material.LODESTONE)
             .name(warp.name)
             .lore("${warp.position.x}, ${warp.position.y}, ${warp.position.z}")
+        var submitted = false
 
         AnvilGUI.Builder()
             .plugin(plugin)
@@ -78,11 +67,20 @@ class WarpRenamingMenu(
             .text(warp.name)
             .onClick { slot, state ->
                 if (slot != AnvilGUI.Slot.OUTPUT) return@onClick listOf()
+                submitted = true
                 val input = state.text.trim()
-                submitName(input)
+                plugin.server.scheduler.runTask(plugin, Runnable {
+                    submitName(input)
+                })
                 listOf(AnvilGUI.ResponseAction.close())
             }
-            .onClose { menuNavigator.goBack() }
+            .onClose {
+                if (!submitted) {
+                    plugin.server.scheduler.runTask(plugin, Runnable {
+                        menuNavigator.goBack()
+                    })
+                }
+            }
             .open(player)
     }
 

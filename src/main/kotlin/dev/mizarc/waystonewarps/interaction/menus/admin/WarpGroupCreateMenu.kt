@@ -7,6 +7,7 @@ import dev.mizarc.waystonewarps.interaction.localization.LocalizationProvider
 import dev.mizarc.waystonewarps.interaction.menus.Menu
 import dev.mizarc.waystonewarps.interaction.menus.MenuNavigator
 import dev.mizarc.waystonewarps.interaction.messaging.PrimaryColourPalette
+import dev.mizarc.waystonewarps.interaction.utils.BedrockFormHelper
 import dev.mizarc.waystonewarps.interaction.utils.lore
 import dev.mizarc.waystonewarps.interaction.utils.name
 import net.wesjd.anvilgui.AnvilGUI
@@ -24,36 +25,26 @@ class WarpGroupCreateMenu(
     private val createWarpGroup: CreateWarpGroup by inject()
     private val plugin = org.bukkit.Bukkit.getPluginManager().getPlugin("WaystoneWarps")!!
 
-    private fun isBedrockPlayer(): Boolean {
-        return try {
-            org.geysermc.floodgate.api.FloodgateApi.getInstance().isFloodgatePlayer(player.uniqueId)
-        } catch (e: Exception) { false }
-    }
+    private fun isBedrockPlayer(): Boolean = BedrockFormHelper.isBedrockPlayer(player.uniqueId)
 
     override fun open() {
         if (isBedrockPlayer()) openBedrockForm() else openAnvilGui()
     }
 
     private fun openBedrockForm() {
-        try {
-            val floodgateApi = org.geysermc.floodgate.api.FloodgateApi.getInstance()
-            val form = org.geysermc.cumulus.form.CustomForm.builder()
-                .title(localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_GROUP_CREATE_TITLE))
-                .input("Group Name", "")
-                .validResultHandler { response ->
-                    val input = response.asInput(0)?.trim() ?: return@validResultHandler
-                    plugin.server.scheduler.runTask(plugin, Runnable { submitName(input) })
-                }
-                .build()
-            floodgateApi.sendForm(player.uniqueId, form)
-        } catch (e: Exception) {
-            plugin.logger.warning("Failed to open Bedrock form for ${player.name}: ${e.message}")
-        }
+        BedrockFormHelper.sendCustomInputForm(
+            plugin = plugin,
+            player = player,
+            title = localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_GROUP_CREATE_TITLE),
+            label = "Group Name",
+            onSubmit = { input -> submitName(input) }
+        )
     }
 
     private fun openAnvilGui() {
         val bookItem = ItemStack(Material.BOOKSHELF)
             .name(localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_GROUP_MANAGEMENT_CREATE_NAME))
+        var submitted = false
 
         AnvilGUI.Builder()
             .plugin(plugin)
@@ -61,11 +52,20 @@ class WarpGroupCreateMenu(
             .itemLeft(bookItem)
             .onClick { slot, state ->
                 if (slot != AnvilGUI.Slot.OUTPUT) return@onClick listOf()
+                submitted = true
                 val input = state.text.trim()
-                submitName(input)
+                plugin.server.scheduler.runTask(plugin, Runnable {
+                    submitName(input)
+                })
                 listOf(AnvilGUI.ResponseAction.close())
             }
-            .onClose { menuNavigator.goBack() }
+            .onClose {
+                if (!submitted) {
+                    plugin.server.scheduler.runTask(plugin, Runnable {
+                        menuNavigator.goBack()
+                    })
+                }
+            }
             .open(player)
     }
 

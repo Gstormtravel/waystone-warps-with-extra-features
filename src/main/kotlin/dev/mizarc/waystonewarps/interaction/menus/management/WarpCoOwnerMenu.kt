@@ -15,14 +15,13 @@ import dev.mizarc.waystonewarps.interaction.localization.LocalizationProvider
 import dev.mizarc.waystonewarps.interaction.menus.Menu
 import dev.mizarc.waystonewarps.interaction.menus.MenuNavigator
 import dev.mizarc.waystonewarps.interaction.messaging.PrimaryColourPalette
+import dev.mizarc.waystonewarps.interaction.utils.BedrockFormHelper
 import dev.mizarc.waystonewarps.interaction.utils.createHead
 import dev.mizarc.waystonewarps.interaction.utils.lore
 import dev.mizarc.waystonewarps.interaction.utils.name
 import org.bukkit.Bukkit
 import org.bukkit.Material
-import org.bukkit.OfflinePlayer
 import org.bukkit.entity.Player
-import org.bukkit.event.inventory.ClickType
 import org.bukkit.inventory.ItemStack
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -35,20 +34,18 @@ class WarpCoOwnerMenu(
 ) : Menu, KoinComponent {
     private val getCoOwners: GetCoOwners by inject()
     private val toggleCoOwner: ToggleCoOwner by inject()
-    private val plugin = org.bukkit.Bukkit.getPluginManager().getPlugin("WaystoneWarps")!!
+    private val plugin = Bukkit.getPluginManager().getPlugin("WaystoneWarps")!!
 
-    private var playerNameSearch: String = ""
     private var page = 1
 
     override fun open() {
         val gui = ChestGui(6, "Co-Owners: ${warp.name}")
-        gui.setOnTopClick { guiEvent -> guiEvent.isCancelled = true }
-        gui.setOnBottomClick { guiEvent ->
-            if (guiEvent.click == ClickType.SHIFT_LEFT ||
-                guiEvent.click == ClickType.SHIFT_RIGHT) guiEvent.isCancelled = true
-        }
+        gui.setOnGlobalClick { it.isCancelled = true }
+        gui.setOnGlobalDrag { it.isCancelled = true }
+        gui.setOnTopClick { it.isCancelled = true }
+        gui.setOnBottomClick { it.isCancelled = true }
 
-        // Outline
+        // Outline border
         val outlinePane = OutlinePane(9, 5)
         val dividerItem = ItemStack(Material.BLACK_STAINED_GLASS_PANE).name(" ")
         outlinePane.applyMask(Mask(
@@ -62,42 +59,60 @@ class WarpCoOwnerMenu(
         outlinePane.setRepeat(true)
         gui.addPane(Slot.fromXY(0, 1), outlinePane)
 
-        // Controls
-        val controlsPane = StaticPane(9, 1)
+        // Controls (slots 0..5 on top row, leaving 6..8 for paginator)
+        val controlsPane = StaticPane(6, 1)
         gui.addPane(Slot.fromXY(0, 0), controlsPane)
 
         // Back button
         val backItem = ItemStack(Material.NETHER_STAR)
-            .name(localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_COMMON_ITEM_BACK_NAME), PrimaryColourPalette.CANCELLED.color!!)
-        controlsPane.addItem(GuiItem(backItem) { menuNavigator.goBack() }, 0, 0)
+            .name(
+                localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_COMMON_ITEM_BACK_NAME),
+                PrimaryColourPalette.CANCELLED.color!!
+            )
+        controlsPane.addItem(GuiItem(backItem) { guiEvent ->
+            guiEvent.isCancelled = true
+            menuNavigator.goBack()
+        }, 0, 0)
 
         // Add co-owner button
-        val addItem = ItemStack(Material.NAME_TAG).name("§aAdd Co-Owner")
+        val addItem = ItemStack(Material.NAME_TAG)
+            .name("§aAdd Co-Owner")
             .lore("Search for a player to add as co-owner")
-        controlsPane.addItem(GuiItem(addItem) {
+        controlsPane.addItem(GuiItem(addItem) { guiEvent ->
+            guiEvent.isCancelled = true
             openSearchInput()
         }, 3, 0)
 
         // Display current co-owners
         val coOwnerIds = getCoOwners.execute(warp.id)
-        val coOwners = coOwnerIds.map { Bukkit.getOfflinePlayer(it) }.sortedBy { it.name }
+        val coOwners = coOwnerIds.map { Bukkit.getOfflinePlayer(it) }.sortedBy { it.name ?: "" }
 
         val playerPane = PaginatedPane(7, 3)
         var currentPagePane = OutlinePane(7, 3)
         var counter = 0
 
         for (coOwner in coOwners) {
+            val coOwnerName = coOwner.name ?: "Unknown"
             val playerItem = createHead(coOwner)
-                .name("§e${coOwner.name ?: "Unknown"}")
+                .name("§e$coOwnerName")
                 .lore("§cClick to remove as co-owner")
 
-            currentPagePane.addItem(GuiItem(playerItem) {
-                toggleCoOwner.execute(
+            currentPagePane.addItem(GuiItem(playerItem) { guiEvent ->
+                guiEvent.isCancelled = true
+                val result = toggleCoOwner.execute(
                     editorPlayerId = player.uniqueId,
                     warpId = warp.id,
                     targetPlayerId = coOwner.uniqueId,
                     bypassOwnership = player.hasPermission("waystonewarps.bypass.manage_players")
                 )
+                result.onSuccess { added ->
+                    if (!added) {
+                        player.sendMessage("§c$coOwnerName has been removed as a co-owner.")
+                    }
+                }
+                result.onFailure { error ->
+                    player.sendMessage("§c${error.message}")
+                }
                 open()
             })
             counter++
@@ -109,15 +124,93 @@ class WarpCoOwnerMenu(
         }
         if (counter > 0) playerPane.addPage(Slot.fromXY(0, 0), currentPagePane)
         if (coOwners.isEmpty()) playerPane.addPage(Slot.fromXY(0, 0), OutlinePane(7, 3))
+
+        val totalPages = playerPane.pages.coerceAtLeast(1)
+        if (page > totalPages) page = totalPages
+        if (page < 1) page = 1
+        playerPane.page = page - 1
+
         gui.addPane(Slot.fromXY(1, 2), playerPane)
+
+        // Paginator (slots 6..8 on top row)
+        addPaginator(gui, totalPages, page) { newPage ->
+            page = newPage
+            playerPane.page = page - 1
+        }
 
         gui.show(player)
     }
 
+    private fun addPaginator(gui: ChestGui, totalPages: Int, startPage: Int, updateContent: (Int) -> Unit) {
+        var currentPage = startPage
+        val paginatorPane = StaticPane(3, 1)
+
+        fun updatePaginator() {
+            paginatorPane.clear()
+
+            val pageNumberItem = ItemStack(Material.PAPER)
+                .name(
+                    localizationProvider.get(
+                        player.uniqueId,
+                        LocalizationKeys.MENU_COMMON_ITEM_PAGE_NAME,
+                        currentPage.toString(),
+                        totalPages.toString()
+                    ),
+                    PrimaryColourPalette.INFO.color!!
+                )
+            paginatorPane.addItem(GuiItem(pageNumberItem) { it.isCancelled = true }, 1, 0)
+
+            val guiPrevItem = if (currentPage <= 1) {
+                val prevItem = ItemStack(Material.ARROW)
+                    .name(
+                        localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_COMMON_ITEM_PREV_NAME),
+                        PrimaryColourPalette.UNAVAILABLE.color!!
+                    )
+                GuiItem(prevItem) { it.isCancelled = true }
+            } else {
+                val prevItem = ItemStack(Material.SPECTRAL_ARROW)
+                    .name(localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_COMMON_ITEM_PREV_NAME))
+                GuiItem(prevItem) { guiEvent ->
+                    guiEvent.isCancelled = true
+                    currentPage--
+                    updateContent(currentPage)
+                    updatePaginator()
+                    gui.update()
+                }
+            }
+            paginatorPane.addItem(guiPrevItem, 0, 0)
+
+            val guiNextItem = if (currentPage >= totalPages) {
+                val nextItem = ItemStack(Material.ARROW)
+                    .name(
+                        localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_COMMON_ITEM_NEXT_NAME),
+                        PrimaryColourPalette.UNAVAILABLE.color!!
+                    )
+                GuiItem(nextItem) { it.isCancelled = true }
+            } else {
+                val nextItem = ItemStack(Material.SPECTRAL_ARROW)
+                    .name(localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_COMMON_ITEM_NEXT_NAME))
+                GuiItem(nextItem) { guiEvent ->
+                    guiEvent.isCancelled = true
+                    currentPage++
+                    updateContent(currentPage)
+                    updatePaginator()
+                    gui.update()
+                }
+            }
+            paginatorPane.addItem(guiNextItem, 2, 0)
+        }
+
+        updatePaginator()
+        gui.addPane(Slot.fromXY(6, 0), paginatorPane)
+    }
+
     override fun passData(data: Any?) {
-        if (data is String) {
-            val targetPlayer = Bukkit.getOfflinePlayerIfCached(data)
-                ?: Bukkit.getOfflinePlayer(data)
+        if (data is String && data.isNotBlank()) {
+            val targetName = data.trim()
+            val targetPlayer = Bukkit.getOfflinePlayerIfCached(targetName)
+                ?: Bukkit.getOfflinePlayer(targetName)
+            val displayName = targetPlayer.name ?: targetName
             val result = toggleCoOwner.execute(
                 editorPlayerId = player.uniqueId,
                 warpId = warp.id,
@@ -126,41 +219,35 @@ class WarpCoOwnerMenu(
             )
             result.onSuccess { added ->
                 if (added) {
-                    player.sendMessage("§a${targetPlayer.name} has been added as a co-owner.")
+                    player.sendMessage("§a$displayName has been added as a co-owner.")
                 } else {
-                    player.sendMessage("§c${targetPlayer.name} has been removed as a co-owner.")
+                    player.sendMessage("§c$displayName has been removed as a co-owner.")
                 }
             }
             result.onFailure { error ->
                 player.sendMessage("§c${error.message}")
             }
         }
-        open()
     }
 
     private fun openSearchInput() {
-        val isBedrockPlayer = try {
-            org.geysermc.floodgate.api.FloodgateApi.getInstance().isFloodgatePlayer(player.uniqueId)
-        } catch (e: Exception) { false }
-
-        if (isBedrockPlayer) {
-            try {
-                val floodgateApi = org.geysermc.floodgate.api.FloodgateApi.getInstance()
-                val formBuilder = org.geysermc.cumulus.form.CustomForm.builder()
-                    .title("Add Co-Owner")
-                    .input("Player Name", "Enter player name here")
-                    .validResultHandler { response ->
-                        val input = response.asInput(0)?.trim() ?: return@validResultHandler
-                        if (input.isBlank()) return@validResultHandler
-                        plugin.server.scheduler.runTask(plugin, Runnable {
-                            passData(input)
-                        })
+        if (BedrockFormHelper.isBedrockPlayer(player.uniqueId)) {
+            BedrockFormHelper.sendCustomInputForm(
+                plugin = plugin,
+                player = player,
+                title = "Add Co-Owner",
+                label = "Player Name",
+                placeholder = "Enter player name here",
+                onSubmit = { input ->
+                    if (input.isNotBlank()) {
+                        passData(input)
                     }
-                    .build()
-                floodgateApi.sendForm(player.uniqueId, formBuilder)
-            } catch (e: Exception) {
-                plugin.logger.warning("Failed to open Bedrock form for ${player.name}: ${e.message}")
-            }
+                    open()
+                },
+                onFailure = {
+                    menuNavigator.openMenu(PlayerSearchMenu(player, menuNavigator))
+                }
+            )
         } else {
             menuNavigator.openMenu(PlayerSearchMenu(player, menuNavigator))
         }

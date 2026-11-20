@@ -39,9 +39,10 @@ class WarpGroupManagementMenu(
     override fun open() {
         val gui =
             ChestGui(6, localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_GROUP_MANAGEMENT_TITLE))
+        gui.setOnGlobalClick { it.isCancelled = true }
+        gui.setOnGlobalDrag { it.isCancelled = true }
         gui.setOnTopClick { it.isCancelled = true }
-        gui.setOnBottomClick { guiEvent -> if (guiEvent.click == ClickType.SHIFT_LEFT ||
-            guiEvent.click == ClickType.SHIFT_RIGHT) guiEvent.isCancelled = true }
+        gui.setOnBottomClick { it.isCancelled = true }
 
         // Border
         val outlinePane = OutlinePane(9, 5)

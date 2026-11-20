@@ -55,6 +55,12 @@ class WarpIconMenu(
         val title = localizationProvider.get(player.uniqueId, LocalizationKeys.MENU_WARP_ICON_TITLE)
         val gui = FurnaceGui(title)
         gui.setOnTopClick { guiEvent -> guiEvent.isCancelled = true }
+        gui.setOnTopDrag { guiEvent -> guiEvent.isCancelled = true }
+        gui.setOnBottomClick { guiEvent ->
+            if (guiEvent.isShiftClick || guiEvent.click == org.bukkit.event.inventory.ClickType.DOUBLE_CLICK) {
+                guiEvent.isCancelled = true
+            }
+        }
 
         val fuelPane = StaticPane(1, 1)
 
