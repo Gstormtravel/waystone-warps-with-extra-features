@@ -103,6 +103,28 @@ class SQLiteStorage(
     }
 
     /**
+     * Executes PRAGMA statements safely using statement.execute(...) to prevent
+     * 'Query returns results' SQLException with sqlite-jdbc.
+     */
+    private fun executePragmasSafely(db: Database) {
+        try {
+            val jdbcConn = db.connection
+            try {
+                jdbcConn.createStatement().use { stmt ->
+                    stmt.execute("PRAGMA journal_mode=WAL;")
+                    stmt.execute("PRAGMA synchronous=NORMAL;")
+                    stmt.execute("PRAGMA busy_timeout=5000;")
+                    stmt.execute("PRAGMA foreign_keys = ON;")
+                }
+            } finally {
+                db.closeConnection(jdbcConn)
+            }
+        } catch (ex: Exception) {
+            logger.warning("Warning applying PRAGMA settings: ${ex.message}")
+        }
+    }
+
+    /**
      * Initializes connection pool, runs integrity check and pragma configuration,
      * and performs auto-recovery if corrupted.
      */
@@ -121,10 +143,7 @@ class SQLiteStorage(
                 .createHikariDatabase()
 
             try {
-                db.executeUpdate("PRAGMA journal_mode=WAL;")
-                db.executeUpdate("PRAGMA synchronous=NORMAL;")
-                db.executeUpdate("PRAGMA busy_timeout=5000;")
-                db.executeUpdate("PRAGMA foreign_keys = ON;")
+                executePragmasSafely(db)
 
                 val integrityResult = checkIntegrity(db)
                 if (integrityResult.equals("ok", ignoreCase = true)) {
@@ -151,17 +170,22 @@ class SQLiteStorage(
             .options(options)
             .maxConnections(1)
             .createHikariDatabase()
-        db.executeUpdate("PRAGMA journal_mode=WAL;")
-        db.executeUpdate("PRAGMA synchronous=NORMAL;")
-        db.executeUpdate("PRAGMA busy_timeout=5000;")
-        db.executeUpdate("PRAGMA foreign_keys = ON;")
+        executePragmasSafely(db)
         connection = db
     }
 
     private fun checkIntegrity(db: Database): String {
         return try {
-            val row = db.getFirstRow("PRAGMA integrity_check;")
-            row?.getString("integrity_check") ?: "unknown"
+            val jdbcConn = db.connection
+            try {
+                jdbcConn.createStatement().use { stmt ->
+                    stmt.executeQuery("PRAGMA integrity_check;").use { rs ->
+                        if (rs.next()) rs.getString(1) ?: "unknown" else "unknown"
+                    }
+                }
+            } finally {
+                db.closeConnection(jdbcConn)
+            }
         } catch (ex: Exception) {
             ex.message ?: "error"
         }
@@ -297,7 +321,14 @@ class SQLiteStorage(
      */
     fun shutdown() {
         try {
-            connection.executeUpdate("PRAGMA wal_checkpoint(TRUNCATE);")
+            val jdbcConn = connection.connection
+            try {
+                jdbcConn.createStatement().use { stmt ->
+                    stmt.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                }
+            } finally {
+                connection.closeConnection(jdbcConn)
+            }
             logger.info("SQLite WAL checkpoint completed.")
         } catch (ex: Exception) {
             logger.warning("Failed to checkpoint WAL on shutdown: ${ex.message}")

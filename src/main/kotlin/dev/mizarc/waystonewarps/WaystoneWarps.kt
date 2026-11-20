@@ -196,7 +196,9 @@ class WaystoneWarps: JavaPlugin() {
     }
 
     override fun onDisable() {
-        RemoveAllDisplays(warpRepository, structureBuilderService, hologramService).execute()
+        if (::warpRepository.isInitialized && ::structureBuilderService.isInitialized && ::hologramService.isInitialized) {
+            RemoveAllDisplays(warpRepository, structureBuilderService, hologramService).execute()
+        }
         if (::storage.isInitialized && storage is SQLiteStorage) {
             (storage as SQLiteStorage).shutdown()
         }
